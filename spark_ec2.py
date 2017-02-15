@@ -76,13 +76,11 @@ VALID_SPARK_VERSIONS = set([
     "1.5.1",
     "1.5.2",
     "1.6.0",
-    "1.6.1",
-    "1.6.2",
-    "1.6.3",
     "2.0.0-preview",
     "2.0.0",
     "2.0.1",
-    "2.0.2"
+    "2.0.2",
+    "2.1.0"
 ])
 
 SPARK_TACHYON_MAP = {
@@ -457,16 +455,25 @@ EC2_INSTANCE_TYPES = {
     "m4.2xlarge":  "hvm",
     "m4.4xlarge":  "hvm",
     "m4.10xlarge": "hvm",
+    "m4.16xlarge": "hvm",
     "r3.large":    "hvm",
     "r3.xlarge":   "hvm",
     "r3.2xlarge":  "hvm",
     "r3.4xlarge":  "hvm",
     "r3.8xlarge":  "hvm",
+    "r4.large":    "hvm",
+    "r4.xlarge":   "hvm",
+    "r4.2xlarge":  "hvm",
+    "r4.4xlarge":  "hvm",
+    "r4.8xlarge":  "hvm",
+    "r4.16xlarge": "hvm",
     "t1.micro":    "pvm",
     "t2.micro":    "hvm",
     "t2.small":    "hvm",
     "t2.medium":   "hvm",
     "t2.large":    "hvm",
+    "x1.16xlarge": "hvm",
+    "x1.32xlarge": "hvm"
 }
 
 
@@ -1050,11 +1057,19 @@ def get_num_disks(instance_type):
         "r3.2xlarge":  1,
         "r3.4xlarge":  1,
         "r3.8xlarge":  2,
+        "r4.large":    0,
+        "r4.xlarge":   0,
+        "r4.2xlarge":  0,
+        "r4.4xlarge":  0,
+        "r4.8xlarge":  0,
+        "r4.16xlarge": 0,
         "t1.micro":    0,
         "t2.micro":    0,
         "t2.small":    0,
         "t2.medium":   0,
         "t2.large":    0,
+        "x1.16xlarge": 1,
+        "x1.32xlarge": 2
     }
     if instance_type in disks_by_instance:
         return disks_by_instance[instance_type]
