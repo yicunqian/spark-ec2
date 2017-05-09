@@ -76,11 +76,9 @@ VALID_SPARK_VERSIONS = set([
     "1.5.1",
     "1.5.2",
     "1.6.0",
-    "2.0.0-preview",
     "2.0.0",
-    "2.0.1",
-    "2.0.2",
-    "2.1.0"
+    "2.1.0",
+    "2.1.1"
 ])
 
 SPARK_TACHYON_MAP = {
@@ -99,14 +97,16 @@ SPARK_TACHYON_MAP = {
     "1.5.1": "0.7.1",
     "1.5.2": "0.7.1",
     "1.6.0": "0.8.2",
-    "2.0.0-preview": "",
+    "2.0.0": "",
+    "2.1.0": "",
+    "2.1.1": ""
 }
 
 DEFAULT_SPARK_VERSION = SPARK_EC2_VERSION
 DEFAULT_SPARK_GITHUB_REPO = "https://github.com/apache/spark"
 
 # Default location to get the spark-ec2 scripts (and ami-list) from
-DEFAULT_SPARK_EC2_GITHUB_REPO = "https://github.com/yicunqian/spark-ec2"
+DEFAULT_SPARK_EC2_GITHUB_REPO = "https://github.com/amplab/spark-ec2"
 DEFAULT_SPARK_EC2_BRANCH = "branch-2.0"
 
 
@@ -455,18 +455,11 @@ EC2_INSTANCE_TYPES = {
     "m4.2xlarge":  "hvm",
     "m4.4xlarge":  "hvm",
     "m4.10xlarge": "hvm",
-    "m4.16xlarge": "hvm",
     "r3.large":    "hvm",
     "r3.xlarge":   "hvm",
     "r3.2xlarge":  "hvm",
     "r3.4xlarge":  "hvm",
     "r3.8xlarge":  "hvm",
-    "r4.large":    "hvm",
-    "r4.xlarge":   "hvm",
-    "r4.2xlarge":  "hvm",
-    "r4.4xlarge":  "hvm",
-    "r4.8xlarge":  "hvm",
-    "r4.16xlarge": "hvm",
     "t1.micro":    "pvm",
     "t2.micro":    "hvm",
     "t2.small":    "hvm",
@@ -553,6 +546,7 @@ def launch_cluster(conn, opts, cluster_name):
         master_group.authorize('tcp', 50070, 50070, authorized_address)
         master_group.authorize('tcp', 60070, 60070, authorized_address)
         master_group.authorize('tcp', 4040, 4045, authorized_address)
+        master_group.authorize('tcp', 54321, 54325, authorized_address)
         # Rstudio (GUI for R) needs port 8787 for web access
         master_group.authorize('tcp', 8787, 8787, authorized_address)
         # HDFS NFS gateway requires 111,2049,4242 for tcp & udp
@@ -1057,12 +1051,6 @@ def get_num_disks(instance_type):
         "r3.2xlarge":  1,
         "r3.4xlarge":  1,
         "r3.8xlarge":  2,
-        "r4.large":    0,
-        "r4.xlarge":   0,
-        "r4.2xlarge":  0,
-        "r4.4xlarge":  0,
-        "r4.8xlarge":  0,
-        "r4.16xlarge": 0,
         "t1.micro":    0,
         "t2.micro":    0,
         "t2.small":    0,
