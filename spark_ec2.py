@@ -51,7 +51,7 @@ else:
     raw_input = input
     xrange = range
 
-SPARK_EC2_VERSION = "1.6.2"
+SPARK_EC2_VERSION = "2.0.0"
 SPARK_EC2_DIR = os.path.dirname(os.path.realpath(__file__))
 
 VALID_SPARK_VERSIONS = set([
@@ -76,8 +76,9 @@ VALID_SPARK_VERSIONS = set([
     "1.5.1",
     "1.5.2",
     "1.6.0",
-    "1.6.1",
-    "1.6.2",
+    "2.0.0",
+    "2.1.0",
+    "2.1.1"
 ])
 
 SPARK_TACHYON_MAP = {
@@ -96,8 +97,9 @@ SPARK_TACHYON_MAP = {
     "1.5.1": "0.7.1",
     "1.5.2": "0.7.1",
     "1.6.0": "0.8.2",
-    "1.6.1": "0.8.2",
-    "1.6.2": "0.8.2",
+    "2.0.0": "",
+    "2.1.0": "",
+    "2.1.1": ""
 }
 
 DEFAULT_SPARK_VERSION = SPARK_EC2_VERSION
@@ -105,7 +107,7 @@ DEFAULT_SPARK_GITHUB_REPO = "https://github.com/apache/spark"
 
 # Default location to get the spark-ec2 scripts (and ami-list) from
 DEFAULT_SPARK_EC2_GITHUB_REPO = "https://github.com/amplab/spark-ec2"
-DEFAULT_SPARK_EC2_BRANCH = "branch-1.6"
+DEFAULT_SPARK_EC2_BRANCH = "branch-2.0"
 
 
 def setup_external_libs(libs):
@@ -196,7 +198,7 @@ def parse_args():
         help="If you have multiple profiles (AWS or boto config), you can configure " +
              "additional, named profiles by using this option (default: %default)")
     parser.add_option(
-        "-t", "--instance-type", default="m3.large",
+        "-t", "--instance-type", default="m1.large",
         help="Type of instance to launch (default: %default). " +
              "WARNING: must be 64-bit; small instances won't work")
     parser.add_option(
@@ -238,7 +240,7 @@ def parse_args():
              "the directory is not created and its contents are copied directly into /. " +
              "(default: %default).")
     parser.add_option(
-        "--hadoop-major-version", default="1",
+        "--hadoop-major-version", default="yarn",
         help="Major version of Hadoop. Valid options are 1 (Hadoop 1.0.4), 2 (CDH 4.2.0), yarn " +
              "(Hadoop 2.4.0) (default: %default)")
     parser.add_option(
@@ -312,6 +314,10 @@ def parse_args():
         help="Additional tags to set on the machines; tags are comma-separated, while name and " +
              "value are colon separated; ex: \"Task:MySparkProject,Env:production\"")
     parser.add_option(
+        "--tag-volumes", action="store_true", default=False,
+        help="Apply the tags given in --additional-tags to any EBS volumes " +
+             "attached to master and slave instances.")
+    parser.add_option(
         "--copy-aws-credentials", action="store_true", default=False,
         help="Add AWS credentials to hadoop configuration to allow Spark to access S3")
     parser.add_option(
@@ -366,10 +372,23 @@ def get_or_make_group(conn, name, vpc_id):
         print("Creating security group " + name)
         return conn.create_security_group(name, "Spark EC2 group", vpc_id)
 
+def validate_spark_hadoop_version(spark_version, hadoop_version):
+    if "." in spark_version:
+        parts = spark_version.split(".")
+        if parts[0].isdigit():
+            spark_major_version = float(parts[0])
+            if spark_major_version > 1.0 and hadoop_version != "yarn":
+              print("Spark version: {v}, does not support Hadoop version: {hv}".
+                    format(v=spark_version, hv=hadoop_version), file=stderr)
+              sys.exit(1)
+        else:
+            print("Invalid Spark version: {v}".format(v=spark_version), file=stderr)
+            sys.exit(1)
 
 def get_validate_spark_version(version, repo):
     if "." in version:
-        version = version.replace("v", "")
+        # Remove leading v to handle inputs like v1.5.0
+        version = version.lstrip("v")
         if version not in VALID_SPARK_VERSIONS:
             print("Don't know about Spark version: {v}".format(v=version), file=stderr)
             sys.exit(1)
@@ -446,6 +465,8 @@ EC2_INSTANCE_TYPES = {
     "t2.small":    "hvm",
     "t2.medium":   "hvm",
     "t2.large":    "hvm",
+    "x1.16xlarge": "hvm",
+    "x1.32xlarge": "hvm"
 }
 
 
@@ -525,6 +546,7 @@ def launch_cluster(conn, opts, cluster_name):
         master_group.authorize('tcp', 50070, 50070, authorized_address)
         master_group.authorize('tcp', 60070, 60070, authorized_address)
         master_group.authorize('tcp', 4040, 4045, authorized_address)
+        master_group.authorize('tcp', 54321, 54325, authorized_address)
         # Rstudio (GUI for R) needs port 8787 for web access
         master_group.authorize('tcp', 8787, 8787, authorized_address)
         # HDFS NFS gateway requires 111,2049,4242 for tcp & udp
@@ -739,15 +761,27 @@ def launch_cluster(conn, opts, cluster_name):
             map(str.strip, tag.split(':', 1)) for tag in opts.additional_tags.split(',')
         )
 
+    print('Applying tags to master nodes')
     for master in master_nodes:
         master.add_tags(
             dict(additional_tags, Name='{cn}-master-{iid}'.format(cn=cluster_name, iid=master.id))
         )
 
+    print('Applying tags to slave nodes')
     for slave in slave_nodes:
         slave.add_tags(
             dict(additional_tags, Name='{cn}-slave-{iid}'.format(cn=cluster_name, iid=slave.id))
         )
+
+    if opts.tag_volumes:
+        if len(additional_tags) > 0:
+            print('Applying tags to volumes')
+            all_instance_ids = [x.id for x in master_nodes + slave_nodes]
+            volumes = conn.get_all_volumes(filters={'attachment.instance-id': all_instance_ids})
+            for v in volumes:
+                v.add_tags(additional_tags)
+        else:
+            print('--tag-volumes has no effect without --additional-tags')
 
     # Return all the instances
     return (master_nodes, slave_nodes)
@@ -1022,6 +1056,8 @@ def get_num_disks(instance_type):
         "t2.small":    0,
         "t2.medium":   0,
         "t2.large":    0,
+        "x1.16xlarge": 1,
+        "x1.32xlarge": 2
     }
     if instance_type in disks_by_instance:
         return disks_by_instance[instance_type]
@@ -1056,13 +1092,16 @@ def deploy_files(conn, root_dir, opts, master_nodes, slave_nodes, modules):
     if "." in opts.spark_version:
         # Pre-built Spark deploy
         spark_v = get_validate_spark_version(opts.spark_version, opts.spark_git_repo)
+        validate_spark_hadoop_version(spark_v, opts.hadoop_major_version)
         tachyon_v = get_tachyon_version(spark_v)
     else:
         # Spark-only custom deploy
         spark_v = "%s|%s" % (opts.spark_git_repo, opts.spark_version)
         tachyon_v = ""
-        print("Deploying Spark via git hash; Tachyon won't be set up")
-        modules = filter(lambda x: x != "tachyon", modules)
+
+    if tachyon_v == "":
+      print("No valid Tachyon version found; Tachyon won't be set up")
+      modules.remove("tachyon")
 
     master_addresses = [get_dns_name(i, opts.private_ips) for i in master_nodes]
     slave_addresses = [get_dns_name(i, opts.private_ips) for i in slave_nodes]
@@ -1263,7 +1302,8 @@ def real_main():
     (opts, action, cluster_name) = parse_args()
 
     # Input parameter validation
-    get_validate_spark_version(opts.spark_version, opts.spark_git_repo)
+    spark_v = get_validate_spark_version(opts.spark_version, opts.spark_git_repo)
+    validate_spark_hadoop_version(spark_v, opts.hadoop_major_version)
 
     if opts.wait is not None:
         # NOTE: DeprecationWarnings are silent in 2.7+ by default.
